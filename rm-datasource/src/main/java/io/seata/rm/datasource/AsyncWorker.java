@@ -189,6 +189,7 @@ public class AsyncWorker implements ResourceManagerInbound {
                 }
 
                 try {
+                    // 删除undoLog
                     UndoLogManagerFactory.getUndoLogManager(dataSourceProxy.getDbType()).batchDeleteUndoLog(xids,
                         branchIds, conn);
                 } catch (Exception ex) {
