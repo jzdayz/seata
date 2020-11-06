@@ -102,10 +102,10 @@ public class AsyncWorker implements ResourceManagerInbound {
          */
         BranchType branchType;
     }
-
+    // 最大context缓存容量
     private static int ASYNC_COMMIT_BUFFER_LIMIT = ConfigurationFactory.getInstance().getInt(
         CLIENT_ASYNC_COMMIT_BUFFER_LIMIT, DEFAULT_CLIENT_ASYNC_COMMIT_BUFFER_LIMIT);
-
+    // 线程安全的阻塞队列
     private static final BlockingQueue<Phase2Context> ASYNC_COMMIT_BUFFER = new LinkedBlockingQueue<>(
         ASYNC_COMMIT_BUFFER_LIMIT);
 
@@ -124,6 +124,7 @@ public class AsyncWorker implements ResourceManagerInbound {
     public synchronized void init() {
         LOGGER.info("Async Commit Buffer Limit: {}", ASYNC_COMMIT_BUFFER_LIMIT);
         ScheduledExecutorService timerExecutor = new ScheduledThreadPoolExecutor(1, new NamedThreadFactory("AsyncWorker", 1, true));
+        // 启动一个定时任务，用来处理 "事务提交"
         timerExecutor.scheduleAtFixedRate(() -> {
             try {
 
@@ -137,12 +138,15 @@ public class AsyncWorker implements ResourceManagerInbound {
     }
 
     private void doBranchCommits() {
+        // 空队列，忽略
         if (ASYNC_COMMIT_BUFFER.isEmpty()) {
             return;
         }
 
         Map<String, List<Phase2Context>> mappedContexts = new HashMap<>(DEFAULT_RESOURCE_SIZE);
         List<Phase2Context> contextsGroupedByResourceId;
+        // 如果buffer中有东西
+        // 将buffer的数据读出来，并按照resourceId分类
         while (!ASYNC_COMMIT_BUFFER.isEmpty()) {
             Phase2Context commitContext = ASYNC_COMMIT_BUFFER.poll();
             contextsGroupedByResourceId = CollectionUtils.computeIfAbsent(mappedContexts, commitContext.resourceId, key -> new ArrayList<>());
@@ -154,8 +158,10 @@ public class AsyncWorker implements ResourceManagerInbound {
             DataSourceProxy dataSourceProxy;
             try {
                 try {
+                    // 获取AT相关的 数据源管理器
                     DataSourceManager resourceManager = (DataSourceManager) DefaultResourceManager.get()
                         .getResourceManager(BranchType.AT);
+                    // 根据resourceId获取代理数据源
                     dataSourceProxy = resourceManager.get(entry.getKey());
                     if (dataSourceProxy == null) {
                         throw new ShouldNeverHappenException("Failed to find resource on " + entry.getKey());
@@ -172,6 +178,7 @@ public class AsyncWorker implements ResourceManagerInbound {
                     xids.add(commitContext.xid);
                     branchIds.add(commitContext.branchId);
                     int maxSize = Math.max(xids.size(), branchIds.size());
+                    // 如果达到批处理阈值，则先进行批量删除
                     if (maxSize == UNDOLOG_DELETE_LIMIT_SIZE) {
                         try {
                             UndoLogManagerFactory.getUndoLogManager(dataSourceProxy.getDbType()).batchDeleteUndoLog(
@@ -189,13 +196,14 @@ public class AsyncWorker implements ResourceManagerInbound {
                 }
 
                 try {
+                    // 再次删除undoLog
                     // 删除undoLog
                     UndoLogManagerFactory.getUndoLogManager(dataSourceProxy.getDbType()).batchDeleteUndoLog(xids,
                         branchIds, conn);
                 } catch (Exception ex) {
                     LOGGER.warn("Failed to batch delete undo log [" + branchIds + "/" + xids + "]", ex);
                 }
-
+                // 如果不是自动提交，则提交
                 if (!conn.getAutoCommit()) {
                     conn.commit();
                 }

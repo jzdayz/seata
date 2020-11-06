@@ -50,7 +50,7 @@ public class DataSourceManager extends AbstractResourceManager implements Initia
     private static final Logger LOGGER = LoggerFactory.getLogger(DataSourceManager.class);
 
     private ResourceManagerInbound asyncWorker;
-
+    // resourceId,resource
     private Map<String, Resource> dataSourceCache = new ConcurrentHashMap<>();
 
     /**
@@ -138,6 +138,7 @@ public class DataSourceManager extends AbstractResourceManager implements Initia
     @Override
     public BranchStatus branchCommit(BranchType branchType, String xid, long branchId, String resourceId,
                                      String applicationData) throws TransactionException {
+        // commit之后需要删除undoLog，这个及时性要求不高，所以使用异步任务去删除
         return asyncWorker.branchCommit(branchType, xid, branchId, resourceId, applicationData);
     }
 

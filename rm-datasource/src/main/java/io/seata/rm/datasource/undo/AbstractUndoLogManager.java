@@ -241,6 +241,7 @@ public abstract class AbstractUndoLogManager implements UndoLogManager {
                 conn = dataSourceProxy.getPlainConnection();
 
                 // The entire undo process should run in a local transaction.
+                // 取消autocommit
                 if (originalAutoCommit = conn.getAutoCommit()) {
                     conn.setAutoCommit(false);
                 }
